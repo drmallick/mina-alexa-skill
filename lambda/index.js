@@ -11,12 +11,15 @@
 'use strict';
 
 const Alexa = require('alexa-sdk');
-var https = require('https');
 const APP_ID = undefined;  // TODO replace with your app ID (OPTIONAL).
+
+var https = require('https');
+var http = require('http');
+var xml2js = require('xml2js').parseString;
 
 const handlers = {
     'LaunchRequest': function () {
-        this.emit(':ask', "Which book would you like to listen to ?");
+        this.emit(':ask', "What book would you like to listen to ?");
     },
     'GetNewFactIntent': function () {
         this.emit('GetFact');
@@ -31,11 +34,15 @@ const handlers = {
         };
 
         httpsGet(options, (myResult) => {
-                this.response.speak(myResult);
-                this.emit(':tell', "Hello World");
-
-            }
-        );
+          // this.response.speak(myResult);
+          var slots = this.event.request.intent.slots;
+          if(slots.bookName.value) {
+            var output = "Finding audiobooks for the book" + slots.bookName.value;
+            this.emit(':tell', output);
+          } else {
+            this.emit(':tell', "Charles Dickens");
+          }
+        });
     },
     'GetFact': function () {
         const factArr = this.t('FACTS');
@@ -60,13 +67,19 @@ const handlers = {
 };
 
 
-function httpsGet(options, callback) {
+function httpsGet(options, callback, url) {
 
-  var baseUrl = 'https://librivox.org/api/feed/' + options.feedname;
-  var reqUrl = '/?' + options.parameter +'=^' + encodeURIComponent(options.query) + '&format=' + options.format;
-  var fullUrl = baseUrl + reqUrl;
+  if(url === undefined) {
+    var baseUrl = 'https://librivox.org/api/feed/' + options.feedname;
+    var reqUrl = '/?' + options.parameter +'=^' +
+          encodeURIComponent(options.query) +
+          '&format=' + options.format;
+    var url = baseUrl + reqUrl;
+    console.log(url);
+  }
 
-  var req = https.request(fullUrl, res => {
+  var method = url.startsWith('https') ? https : http;
+  var req = method.request(url, res => {
     res.setEncoding('utf8');
     var returnData = "";
 
@@ -75,15 +88,34 @@ function httpsGet(options, callback) {
     });
 
     res.on('end', () => {
-      returnData = JSON.parse(returnData);
-      console.log(returnData);
-      callback(returnData);
+      if(url.includes('rss')) {
+        xml2js(returnData, (error, result) => {
+          callback(result);
+        });
+      } else {
+        returnData = JSON.parse(returnData);
+        callback(returnData);
+      }
     });
-
   });
   req.end();
-
 }
+
+var options = {
+  feedname: "audiobooks",
+  parameter: "title",
+  query: "pride and prejudice",
+  format: "json"
+}
+
+httpsGet(options, (data) => {
+  console.log(data.rss.channel[0].item[0].link[0]);
+  console.log(data.rss.channel[0].item[0].title[0]);
+}, 'https://librivox.org/rss/253');
+
+// httpsGet(options, (data) => {
+//   console.log(data);
+// });
 
 exports.handler = function (event, context) {
     const alexa = Alexa.handler(event, context);
