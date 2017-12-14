@@ -26,23 +26,41 @@ const handlers = {
     },
     'SearchBook': function(event, handler) {
 
+
+      var slots = this.event.request.intent.slots;
+
+      if(slots.bookName.value) {
+
         var options = {
-            parameter: 'title',
-            feedname: 'audiobooks',
-            query: 'moby dick',
-            format: 'json'
+          parameter: 'title',
+          feedname: 'audiobooks',
+          query: slots.bookName.value,
+          format: 'json'
         };
 
-        httpsGet(options, (myResult) => {
-          // this.response.speak(myResult);
-          var slots = this.event.request.intent.slots;
-          if(slots.bookName.value) {
-            var output = "Finding audiobooks for the book" + slots.bookName.value;
-            this.emit(':tell', output);
-          } else {
-            this.emit(':tell', "Charles Dickens");
-          }
+        var output = "Finding audiobooks for the book" + slots.bookName.value;
+        // this.emit(':tell', output);
+        this.response.audioPlayerPlay('REPLACE_ALL',
+                                      'http://ia802602.us.archive.org/9/items/pride_and_prejudice_librivox/prideandprejudice_54_austen_64kb.mp3',
+                                      'http://ia802602.us.archive.org/9/items/pride_and_prejudice_librivox/prideandprejudice_54_austen_64kb.mp3',
+                                      null, 0);
+        this.emit(':responseReady');
+        getFirstBook(options, (url_rss) => {
+          this.emit(':tell', url_rss);
+          getUrls(url_rss, (data) => {
+            this.emit(':tell', 'extracting urls');
+            console.log(data);
+            this.response
+              .audioPlayerPlay('REPLACE_ALL', data[0].url, data[0].url, null, 0);
+            this.emit(':responseReady');
+          });
         });
+
+
+      } else {
+        this.emit(':tell', "Charles Dickens");
+      }
+
     },
     'GetFact': function () {
         const factArr = this.t('FACTS');
@@ -66,7 +84,6 @@ const handlers = {
     },
 };
 
-
 function httpsGet(options, callback, url) {
 
   if(url === undefined) {
@@ -75,7 +92,6 @@ function httpsGet(options, callback, url) {
           encodeURIComponent(options.query) +
           '&format=' + options.format;
     var url = baseUrl + reqUrl;
-    console.log(url);
   }
 
   var method = url.startsWith('https') ? https : http;
@@ -108,14 +124,41 @@ var options = {
   format: "json"
 }
 
-httpsGet(options, (data) => {
-  console.log(data.rss.channel[0].item[0].link[0]);
-  console.log(data.rss.channel[0].item[0].title[0]);
-}, 'https://librivox.org/rss/253');
+function getFirstBook(options, callback) {
+  httpsGet(options, (returnData) => {
+    callback(returnData.books[0].url_rss);
+  });
+}
+
+function getUrls(url, callback) {
+  var urls = [];
+  httpsGet({}, (data) => {
+    data.rss.channel[0].item.forEach((item) => {
+      urls.push({
+        'title': item.title[0],
+        'url': item.link[0]
+      });
+    });
+    callback(urls);
+  }, url);
+}
 
 // httpsGet(options, (data) => {
+//   console.log(data.rss.channel[0].item[0].link[0]);
+//   console.log(data.rss.channel[0].item[0].title[0]);
+// }, 'https://librivox.org/rss/253');
+
+// httpsGet(options, (data) => {
+//   console.log(data.books[0]);
+// });
+
+// getUrls('https://librivox.org/rss/253', (data) => {
 //   console.log(data);
 // });
+
+// getFirstBook(options, (data) => {
+//   console.log(data);
+// })
 
 exports.handler = function (event, context) {
     const alexa = Alexa.handler(event, context);
