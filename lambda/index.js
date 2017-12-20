@@ -89,61 +89,60 @@ const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
     this.emit('NewSession');
   },
 
-  'LaunchRequest' : function () {
-    /*
-     *  Session resumed in PLAY_MODE STATE.
-     *  If playback had finished during last session :
-     *      Give welcome message.
-     *      Change state to START_STATE to restrict user inputs.
-     *  Else :
-     *      Ask user if he/she wants to resume from last position.
-     *      Change state to RESUME_DECISION_MODE
-     */
-    var message;
-    var reprompt;
-    if (this.attributes['playbackFinished']) {
-      this.handler.state = constants.states.START_MODE;
-      message = "Welcome to the Birthday Hotline. You can say, play the audio, to begin";
-      reprompt = 'You can say, play the audio, to begin.';
-    } else {
-      this.handler.state = constants.states.RESUME_DECISION_MODE;
-      message = 'You were listening to ' + this.attributes['recordings'][this.attributes['playOrder'][this.attributes['index']]].title +
-        ' Would you like to resume?';
-      reprompt = 'You can say yes to resume or no to play from the top.';
-    }
+  'AMAZON.NextIntent' : function () {
+    var index = this.attributes['index'];
+    var currentBookId = this.attributes['currentBook'];
+    var currentBook = this.attributes['books']['currentBookId'];
+    index += 1;
 
-    this.response.speak(message).listen(reprompt);
-    this.emit(':responseReady');
   },
-  'PlayAudio' : function () { controller.play.call(this) },
-  'AMAZON.NextIntent' : function () { controller.playNext.call(this) },
-  'AMAZON.PreviousIntent' : function () { controller.playPrevious.call(this) },
-  'AMAZON.PauseIntent' : function () { controller.stop.call(this) },
-  'AMAZON.StopIntent' : function () { controller.stop.call(this) },
-  'AMAZON.CancelIntent' : function () { controller.stop.call(this) },
-  'AMAZON.ResumeIntent' : function () { controller.play.call(this) },
-  'AMAZON.LoopOnIntent' : function () { controller.loopOn.call(this) },
-  'AMAZON.LoopOffIntent' : function () { controller.loopOff.call(this) },
-  'AMAZON.ShuffleOnIntent' : function () { controller.shuffleOn.call(this) },
-  'AMAZON.ShuffleOffIntent' : function () { controller.shuffleOff.call(this) },
-  'AMAZON.StartOverIntent' : function () { controller.startOver.call(this) },
-  'AMAZON.HelpIntent' : function () {
-    // This will called while audio is playing and a user says "ask <invocation_name> for help"
-    var message = "You are listening to the Birthday Hotline. You can say, Next or Previous to navigate through the playlist. " +
-          'At any time, you can say Pause to pause the audio and Resume to resume.';
-    this.response.speak(message).listen(message);
-    this.emit(':responseReady');
+
+  'AMAZON.PreviousIntent' : function () { },
+
+  'AMAZON.PauseIntent' : function () {
+    controller.stop.call(this);
   },
+
+  'AMAZON.StopIntent' : function () {
+    controller.stop.call(this);
+  },
+
+  'AMAZON.CancelIntent' : function () {  },
+  'AMAZON.ResumeIntent' : function () {  },
+  'AMAZON.LoopOnIntent' : function () {  },
+  'AMAZON.LoopOffIntent' : function () { },
+  'AMAZON.ShuffleOnIntent' : function () { },
+  'AMAZON.ShuffleOffIntent' : function () { },
+  'AMAZON.StartOverIntent' : function () { },
+  'AMAZON.HelpIntent' : function () { },
   'SessionEndedRequest' : function () {
-    // No session ended logic
   },
+
   'Unhandled' : function () {
-    var message = 'Sorry, I could not understand. You can say, Next or Previous to navigate through the playlist.';
+    var message = 'Sorry, I could not understand.';
     this.response.speak(message).listen(message);
     this.emit(':responseReady');
   }
+
 });
 
+const controller = function() {
+  return {
+    play: function() {
+      this.handler.state = states.PLAY_MODE;
+      var url = this.attributes['currentChapters'][0].url;
+      var title = this.attributes['currentChapters'][0].title;
+      this.response.audioPlayerPlay('REPLACE_ALL',
+                                    url, title, null, 0);
+      this.emit(':responseReady');
+    },
+
+    stop: function() {
+      this.response.audioPlayerStop();
+      this.emit(':responseReady');
+    }
+  };
+}
 
 const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   'NewSession': function() {
@@ -158,13 +157,22 @@ const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
 
     httpGet(book.url).then((data) => {
       var bookData = buildBookData(data);
+
+      if(!this.attributes['books']) {this.attributes['books'] = {};};
       this.attributes['books'][bookId] = bookData;
       this.attributes['currentBook'] = bookId;
+      this.attributes['index'] = 0;
+      this.attributes['currentChapters'] = bookData['chapters'];
       var firstTitle = bookData.chapters[0].title;
-      var firstURL= bookData.chapters[0].url.replace(/http/, 'https');
+
+      console.log(firstURL);
+
+
       this.response.speak('Playing ' + firstTitle);
+      controller.play.call(this);
       this.response.audioPlayerPlay('REPLACE_ALL', firstURL, firstTitle, null, 0);
       this.emit(':responseReady');
+
     }).catch((error) => {
       console.log(error);
     });
