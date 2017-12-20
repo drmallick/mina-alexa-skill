@@ -37,7 +37,6 @@ const handlers = {
           this.response.speak('Did you mean ' + results[0].title + ' by ' +
                               results[0].authors.join(', '));
           this.emit(':responseReady');
-          this.handler.state = states.CONFIRMBOOK;
         });
         // this.response.audioPlayerPlay('REPLACE_ALL',
         //                               'https://ia802602.us.archive.org/9/items/pride_and_prejudice_librivox/prideandprejudice_54_austen_64kb.mp3',
