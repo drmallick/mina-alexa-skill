@@ -34,14 +34,11 @@ const handlers = {
           var results = buildSearchResults(data);
           this.attributes['searchResults'] = results;
           this.attributes['confirmIndex'] = 0;
-          this.response.speak('Did you mean ' + results[0].title + ' by ' +
+          this.handler.state = states.CONFIRMBOOK;
+          this.response.listen('Did you mean ' + results[0].title + ' by ' +
                               results[0].authors.join(', '));
           this.emit(':responseReady');
         });
-        // this.response.audioPlayerPlay('REPLACE_ALL',
-        //                               'https://ia802602.us.archive.org/9/items/pride_and_prejudice_librivox/prideandprejudice_54_austen_64kb.mp3',
-        //                               'https://ia802602.us.archive.org/9/items/pride_and_prejudice_librivox/prideandprejudice_54_austen_64kb.mp3',
-        //                               null, 0);
       } else {
         this.emit(':tell', "Charles Dickens");
       }
@@ -137,11 +134,9 @@ const playHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   'AMAZON.YesIntent': function() {
     var index = this.attributes['confirmIndex'];
     var book = this.attributes['searchResults'][index];
-    console.log(book);
     httpGet(book.url).then((data) => {
       var bookData = buildBookData(data);
       this.attributes['currentBook'] = bookData;
-      console.log('inside httpget');
       var firstTitle = bookData.chapters[0].title;
       var firstURL= bookData.chapters[0].url.replace(/http/, 'https');
       console.log(firstTitle);
@@ -190,6 +185,7 @@ exports.handler = function (event, context) {
   const alexa = Alexa.handler(event, context);
   alexa.APP_ID = APP_ID;
   alexa.dynamoDBTableName = 'mina';
-  alexa.registerHandlers(handlers);
+  alexa.registerHandlers(handlers,
+                        playHandlers);
   alexa.execute();
 };
