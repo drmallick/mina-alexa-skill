@@ -154,11 +154,12 @@ const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
 
     var index = this.attributes['confirmIndex'];
     var book = this.attributes['searchResults'][index];
+    var bookId = book.id;
 
     httpGet(book.url).then((data) => {
       var bookData = buildBookData(data);
-      this.attributes['books'][]
-      this.attributes['currentBook'] = bookData;
+      this.attributes['books'][bookId] = bookData;
+      this.attributes['currentBook'] = bookId;
       var firstTitle = bookData.chapters[0].title;
       var firstURL= bookData.chapters[0].url.replace(/http/, 'https');
       this.response.speak('Playing ' + firstTitle);
@@ -171,7 +172,7 @@ const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   },
 
   'AMAZON.NoIntent': function() {
-
+    this.emit("NewSession");
   },
 
   'Unhandled': function() { 
