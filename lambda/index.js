@@ -11,7 +11,8 @@ var rp = require('request-promise');
 
 const states = {
   CONFIRMBOOK : '_CONFIRMBOOK',
-  SEARCHBOOK: '_SEARCHBOOK'
+  SEARCHBOOK: '_SEARCHBOOK',
+  PLAY_MODE: '_PLAY_MODE'
 };
 
 const handlers = {
@@ -57,6 +58,7 @@ const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
         this.handler.state = states.CONFIRMBOOK;
         this.emit(':ask', 'Did you mean ' + results[0].title + ' by ' +
                             results[0].authors.join(', '));
+        this.emit(':saveState');
       });
     } else if(slots.authorName.value) {
     }
@@ -82,21 +84,83 @@ const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
   }
 });
 
+const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
+  'NewSession': function() {
+    this.emit('NewSession');
+  },
 
-const playHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
+  'LaunchRequest' : function () {
+    /*
+     *  Session resumed in PLAY_MODE STATE.
+     *  If playback had finished during last session :
+     *      Give welcome message.
+     *      Change state to START_STATE to restrict user inputs.
+     *  Else :
+     *      Ask user if he/she wants to resume from last position.
+     *      Change state to RESUME_DECISION_MODE
+     */
+    var message;
+    var reprompt;
+    if (this.attributes['playbackFinished']) {
+      this.handler.state = constants.states.START_MODE;
+      message = "Welcome to the Birthday Hotline. You can say, play the audio, to begin";
+      reprompt = 'You can say, play the audio, to begin.';
+    } else {
+      this.handler.state = constants.states.RESUME_DECISION_MODE;
+      message = 'You were listening to ' + this.attributes['recordings'][this.attributes['playOrder'][this.attributes['index']]].title +
+        ' Would you like to resume?';
+      reprompt = 'You can say yes to resume or no to play from the top.';
+    }
+
+    this.response.speak(message).listen(reprompt);
+    this.emit(':responseReady');
+  },
+  'PlayAudio' : function () { controller.play.call(this) },
+  'AMAZON.NextIntent' : function () { controller.playNext.call(this) },
+  'AMAZON.PreviousIntent' : function () { controller.playPrevious.call(this) },
+  'AMAZON.PauseIntent' : function () { controller.stop.call(this) },
+  'AMAZON.StopIntent' : function () { controller.stop.call(this) },
+  'AMAZON.CancelIntent' : function () { controller.stop.call(this) },
+  'AMAZON.ResumeIntent' : function () { controller.play.call(this) },
+  'AMAZON.LoopOnIntent' : function () { controller.loopOn.call(this) },
+  'AMAZON.LoopOffIntent' : function () { controller.loopOff.call(this) },
+  'AMAZON.ShuffleOnIntent' : function () { controller.shuffleOn.call(this) },
+  'AMAZON.ShuffleOffIntent' : function () { controller.shuffleOff.call(this) },
+  'AMAZON.StartOverIntent' : function () { controller.startOver.call(this) },
+  'AMAZON.HelpIntent' : function () {
+    // This will called while audio is playing and a user says "ask <invocation_name> for help"
+    var message = "You are listening to the Birthday Hotline. You can say, Next or Previous to navigate through the playlist. " +
+          'At any time, you can say Pause to pause the audio and Resume to resume.';
+    this.response.speak(message).listen(message);
+    this.emit(':responseReady');
+  },
+  'SessionEndedRequest' : function () {
+    // No session ended logic
+  },
+  'Unhandled' : function () {
+    var message = 'Sorry, I could not understand. You can say, Next or Previous to navigate through the playlist.';
+    this.response.speak(message).listen(message);
+    this.emit(':responseReady');
+  }
+});
+
+
+const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   'NewSession': function() {
     this.emit('NewSession');
   },
 
   'AMAZON.YesIntent': function() {
+
     var index = this.attributes['confirmIndex'];
     var book = this.attributes['searchResults'][index];
+
     httpGet(book.url).then((data) => {
       var bookData = buildBookData(data);
+      this.attributes['books'][]
       this.attributes['currentBook'] = bookData;
       var firstTitle = bookData.chapters[0].title;
       var firstURL= bookData.chapters[0].url.replace(/http/, 'https');
-      console.log(firstTitle);
       this.response.speak('Playing ' + firstTitle);
       this.response.audioPlayerPlay('REPLACE_ALL', firstURL, firstTitle, null, 0);
       this.emit(':responseReady');
@@ -105,6 +169,11 @@ const playHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
     });
 
   },
+
+  'AMAZON.NoIntent': function() {
+
+  },
+
   'Unhandled': function() { 
     // console.log(this.event);
     // console.log(this.event.request.intent.slots);
@@ -113,12 +182,53 @@ const playHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   }
 
 });
-// var options = {
-//   feedname: "audiobooks",
-//   parameter: "title",
-//   query: "pride and prejudice",
-//   format: "json"
-// }
+
+
+const audioEventHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
+    'PlaybackStarted' : function () {
+        /*
+         * AudioPlayer.PlaybackStarted Directive received.
+         * Confirming that requested audio file began playing.
+         * Storing details in dynamoDB using attributes.
+         */
+        this.emit(':saveState', true);
+    },
+    'PlaybackFinished' : function () {
+        /*
+         * AudioPlayer.PlaybackFinished Directive received.
+         * Confirming audio file completed playing.
+         * Storing details in dynamoDB using attributes.
+         */
+        this.attributes['playbackFinished'] = true;
+        this.attributes['enqueuedToken'] = false;
+        this.emit(':saveState', true);
+    },
+    'PlaybackStopped' : function () {
+        /*
+         * AudioPlayer.PlaybackStopped Directive received.
+         * Confirming that audio file stopped playing.
+         * Storing details in dynamoDB using attributes.
+         */
+        this.attributes['token'] = getToken.call(this);
+        this.attributes['index'] = getIndex.call(this);
+        this.attributes['offsetInMilliseconds'] = getOffsetInMilliseconds.call(this);
+        this.emit(':saveState', true);
+    },
+    'PlaybackNearlyFinished' : function () {
+        /*
+         * AudioPlayer.PlaybackNearlyFinished Directive received.
+         * Using this opportunity to enqueue the next audio
+         * Storing details in dynamoDB using attributes.
+         * Enqueuing the next audio file.
+         */
+    },
+
+    'PlaybackFailed' : function () {
+        //  AudioPlayer.PlaybackNearlyFinished Directive received. Logging the error.
+        console.log("Playback Failed : %j", this.event.request.error);
+        this.context.succeed(true);
+    }
+});
 
 var xmlTransform = (body, response, resolveWithFullResponse) => {
   return xml2js(body).then((result) => {
@@ -152,6 +262,7 @@ function buildSearchResults(jsonObject) {
     data['description'] = book.description;
     data['url'] = book.url_rss;
     data['authors'] = [];
+    data['id'] = book.id;
     book.authors.forEach((author) => {
       data['authors'].push(author.first_name + ' ' + author.last_name);
     });
@@ -214,6 +325,7 @@ exports.handler = function (event, context) {
   alexa.dynamoDBTableName = 'mina';
   alexa.registerHandlers(handlers,
                          searchHandlers,
-                        playHandlers);
+                         confirmHandlers,
+                        playModeHandlers);
   alexa.execute();
 };
