@@ -12,7 +12,8 @@ var rp = require('request-promise');
 const states = {
   CONFIRMBOOK : '_CONFIRMBOOK',
   SEARCHBOOK: '_SEARCHBOOK',
-  PLAY_MODE: '_PLAY_MODE'
+  PLAY_MODE: '_PLAY_MODE',
+  PLAYINGMODE: '_PLAYINGMODE'
 };
 
 const handlers = {
@@ -25,6 +26,21 @@ const handlers = {
     this.handler.state = '';
     delete this.attributes['STATE'];
     this.response.listen('What book would you like to listen to ?');
+    this.emit(':responseReady');
+  },
+
+  'AMAZON.PauseIntent' : function () {
+    controller.stop.call(this);
+  },
+
+  'AMAZON.StopIntent' : function () {
+    controller.stop.call(this);
+  },
+
+  'Unhandled': function() { 
+    // console.log(this.event);
+    // console.log(this.event.request.intent.slots);
+    this.response.speak('Sorry, I didn\'t get that.').listen('Try again');
     this.emit(':responseReady');
   }
 };
@@ -73,7 +89,7 @@ const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
         this.emit(':tell', this.t('STOP_MESSAGE'));
     },
     'AMAZON.StopIntent': function () {
-        this.emit(':tell', this.t('STOP_MESSAGE'));
+      controller.stop.call(this);
     },
 
   'Unhandled': function() { 
@@ -81,7 +97,12 @@ const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
     // console.log(this.event.request.intent.slots);
     this.response.speak('Sorry, I didn\'t get that.').listen('Try again');
     this.emit(':responseReady');
+  },
+
+  'AMAZON.PauseIntent' : function () {
+    controller.stop.call(this);
   }
+
 });
 
 const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
@@ -129,9 +150,12 @@ const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
 const controller = function() {
   return {
     play: function() {
-      this.handler.state = states.PLAY_MODE;
-      var url = this.attributes['currentChapters'][0].url;
+      this.handler.state = states.PLAYINGMODE;
+      var url = this.attributes['currentChapters'][0].url.replace(/http/, 'https');
       var title = this.attributes['currentChapters'][0].title;
+      console.log(url);
+      console.log(title);
+      console.log(this.attributes['currentChapters']);
       this.response.audioPlayerPlay('REPLACE_ALL',
                                     url, title, null, 0);
       this.emit(':responseReady');
@@ -142,7 +166,7 @@ const controller = function() {
       this.emit(':responseReady');
     }
   };
-}
+}();
 
 const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
   'NewSession': function() {
@@ -158,20 +182,19 @@ const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
     httpGet(book.url).then((data) => {
       var bookData = buildBookData(data);
 
-      if(!this.attributes['books']) {this.attributes['books'] = {};};
-      this.attributes['books'][bookId] = bookData;
-      this.attributes['currentBook'] = bookId;
-      this.attributes['index'] = 0;
+      // if(!this.attributes['books']) {this.attributes['books'] = {};};
+      // this.attributes['books'][bookId] = bookData;
+      // this.attributes['currentBook'] = bookId;
+      // this.attributes['index'] = 0;
       this.attributes['currentChapters'] = bookData['chapters'];
       var firstTitle = bookData.chapters[0].title;
 
-      console.log(firstURL);
 
 
       this.response.speak('Playing ' + firstTitle);
       controller.play.call(this);
-      this.response.audioPlayerPlay('REPLACE_ALL', firstURL, firstTitle, null, 0);
-      this.emit(':responseReady');
+      // this.response.audioPlayerPlay('REPLACE_ALL', firstURL, firstTitle, null, 0);
+      // this.emit(':responseReady');
 
     }).catch((error) => {
       console.log(error);
@@ -183,7 +206,7 @@ const confirmHandlers = Alexa.CreateStateHandler(states.CONFIRMBOOK, {
     this.emit("NewSession");
   },
 
-  'Unhandled': function() { 
+  'Unhandled': function() {
     // console.log(this.event);
     // console.log(this.event.request.intent.slots);
     this.response.speak('Sorry, I didn\'t get that.').listen('Try again');
@@ -236,7 +259,15 @@ const audioEventHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
         //  AudioPlayer.PlaybackNearlyFinished Directive received. Logging the error.
         console.log("Playback Failed : %j", this.event.request.error);
         this.context.succeed(true);
-    }
+    },
+
+  'Unhandled': function() { 
+    // console.log(this.event);
+    // console.log(this.event.request.intent.slots);
+    this.response.speak('Sorry, I didn\'t get that.').listen('Try again');
+    this.emit(':responseReady');
+  }
+
 });
 
 var xmlTransform = (body, response, resolveWithFullResponse) => {
