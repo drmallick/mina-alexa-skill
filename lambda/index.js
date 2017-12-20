@@ -12,8 +12,7 @@ var rp = require('request-promise');
 const states = {
   CONFIRMBOOK : '_CONFIRMBOOK',
   SEARCHBOOK: '_SEARCHBOOK',
-  PLAY_MODE: '_PLAY_MODE',
-  PLAYINGMODE: '_PLAYINGMODE'
+  PLAY_MODE: '_PLAY_MODE'
 };
 
 const handlers = {
@@ -107,7 +106,8 @@ const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
 
 const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
   'NewSession': function() {
-    this.emit('NewSession');
+    controller.stop.call(this);
+    // this.emit("NewSession");
   },
 
   'AMAZON.NextIntent' : function () {
@@ -150,7 +150,7 @@ const playModeHandlers = Alexa.CreateStateHandler(states.PLAY_MODE, {
 const controller = function() {
   return {
     play: function() {
-      this.handler.state = states.PLAYINGMODE;
+      this.handler.state = states.PLAY_MODE;
       var url = this.attributes['currentChapters'][0].url.replace(/http/, 'https');
       var title = this.attributes['currentChapters'][0].title;
       console.log(url);
@@ -162,8 +162,17 @@ const controller = function() {
     },
 
     stop: function() {
-      this.response.audioPlayerStop();
-      this.emit(':responseReady');
+      console.log(this.handler.state);
+      if(this.handler.state === '_PLAY_MODE') {
+        this.handler.state = states.SEARCHBOOK;
+        this.attributes['STATE'] = states.SEARCHBOOK;
+        this.emit(':saveState', true);
+        this.response.speak("Okay");
+        this.response.audioPlayerStop();
+        this.emit(':responseReady');
+      } else {
+        this.emit('NewSession');
+      }
     }
   };
 }();
