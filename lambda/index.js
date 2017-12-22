@@ -47,7 +47,7 @@ const handlers = {
 const searchHandlers = Alexa.CreateStateHandler(states.SEARCHBOOK, {
 
     'NewSession': function(event, handler) {
-      this.emit(':ask', "What would you like to do ?");
+      this.emit(':ask', "Which book would you like to listen to?");
     },
 
   'SearchBook': function(event, handler) {
